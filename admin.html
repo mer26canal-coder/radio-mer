@@ -79,7 +79,7 @@ function uploadFile(file, onProg){
       for (var k = 0; k < bytes.length; k += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(k, k + 8192));
       await A('upChunk', {tmpId: s.tmpId, index: i, data: btoa(bin)}); onProg && onProg((i + 1) / (n + 1));
     }
-    var r = await A('upFinish', {tmpId: s.tmpId, name: file.name, mime: file.type}); onProg && onProg(1); return r;
+    var r = await A('upFinish', {tmpId: s.tmpId, name: (file.__n || file.name), mime: file.type}); onProg && onProg(1); return r;
   })();
 }
 function duration(file){ return new Promise(function(res){ var a = new Audio(); a.preload = 'metadata'; a.onloadedmetadata = function(){ res(Math.round(a.duration)); }; a.onerror = function(){ res(0); }; a.src = URL.createObjectURL(file); }); }
@@ -201,16 +201,17 @@ V.carteirinhas = function(el){ head(el, 'Carteirinhas', 'Cadastro pelo link, fot
 
 // ---- músicas ----
 V.musicas = function(el){ head(el, 'Músicas', 'Envie MP3 e vinhetas. Elas ficam guardadas no seu Google Drive.');
+  var used = col('tracks').reduce(function(a, t){ return a + (t.size || (String(t.fileId).indexOf('.mp3') > 0 && !t.size ? 5500000 : 0)); }, 0); var pct = Math.min(100, used / 1e9 * 100); var bm = box(el, 'Espaço usado no site'); bm.innerHTML += '<div style="background:#222;border-radius:8px;height:12px;overflow:hidden"><div style="width:' + pct.toFixed(1) + '%;height:100%;background:' + (pct > 80 ? '#e5484d' : '#1e6bff') + '"></div></div><p class="mut">' + (used / 1e6).toFixed(0) + ' MB de ~1000 MB (limite recomendado do GitHub grátis). Cada arquivo até 25 MB.</p>';
   var bs = box(el, 'Pasta do Drive'); bs.innerHTML += '<p class="mut">Solte MP3 direto na pasta <b>Rádio Mer - arquivos</b> do Google Drive. A rádio identifica sozinha (a cada ~90 s, ou clique abaixo). Arquivos que não são áudio de verdade (ex.: MP4 do YouTube com nome .mp3) são ignorados e listados aqui. Vinhetas: comece o nome do arquivo com "vinheta".</p><button class="btn" id="sync_go">Sincronizar agora</button><div id="sync_log" class="mut" style="margin-top:8px"></div>' + ((S.ignored || []).length ? '<div class="list" style="margin-top:8px">' + S.ignored.map(function(i){ return '<div><div class="g"><b>⚠️ ' + E(i.name) + '</b><span class="mut">' + E(i.reason) + '</span></div></div>'; }).join('') + '</div>' : '');
   $('sync_go').onclick = async function(){ $('sync_log').textContent = 'Sincronizando...'; try { await reload(true); go('musicas'); toast('Sincronizado'); } catch(e){ toast(e.message, true); } };
   var b = box(el, 'Enviar áudio');
   b.innerHTML += '<div class="g2"><div class="f"><label>Tipo</label><select id="up_kind"><option value="music">Música</option><option value="jingle">Vinheta / comercial</option></select></div><div class="f"><label>Arquivo(s) MP3</label><input type="file" id="up_file" accept="audio/*" multiple></div></div><button class="btn" id="up_go">Enviar</button><div id="up_log" class="mut" style="margin-top:10px"></div><div class="prog"><i id="up_bar"></i></div><p class="mut">Dica: nome do arquivo "Cantor - Música.mp3" já preenche o título e o artista.</p>';
   $('up_go').onclick = async function(){ var fs = $('up_file').files; if (!fs.length) return toast('Escolha os arquivos', true); $('up_go').disabled = true;
     for (var i = 0; i < fs.length; i++){ var f = fs[i]; $('up_log').textContent = 'Enviando ' + (i + 1) + '/' + fs.length + ': ' + f.name;
-      try { var d = await duration(f); if (!d) throw new Error('não consegui ler a duração de ' + f.name); var r = await uploadFile(f, function(p){ $('up_bar').style.width = (p * 100) + '%'; });
+      try { var d = await duration(f); if (!d) throw new Error('não consegui ler a duração de ' + f.name); if (val('up_kind') === 'jingle') f.__n = 'vinheta - ' + f.name; var r = await uploadFile(f, function(p){ $('up_bar').style.width = (p * 100) + '%'; });
         var base = f.name.replace(/\.[^.]+$/, ''); var parts = base.split(' - '); var item = {title: (parts.length > 1 ? parts.slice(1).join(' - ') : base).trim(), artist: parts.length > 1 ? parts[0].trim() : '', fileId: r.fileId, duration: d, kind: val('up_kind')};
-        await A('save', {col: 'tracks', item: item}); } catch(e){ toast(e.message, true); } }
-    await reload(); toast('Envio concluído'); go('musicas'); };
+        } catch(e){ toast(e.message, true); } }
+    $('up_log').textContent = 'Copiando para o site...'; await reload(true); toast('Envio concluído. A faixa entra no ar em ~2 min'); go('musicas'); };
   crud(el, {col:'tracks', title:'Biblioteca', add:'Adicionar por link do Drive', label:function(t){return t.title;}, sub:function(t){return (t.artist ? t.artist + ' · ' : '') + Radio.fmt(t.duration) + ' · ' + ({music:'música', jingle:'vinheta', voice:'recado'}[t.kind] || t.kind);},
     form:function(t){ return field('Título', 't_t', t.title) + field('Artista', 't_a', t.artist) + '<div class="f"><label>Tipo</label><select id="t_k"><option value="music">Música</option><option value="jingle">Vinheta / comercial</option><option value="voice">Recado</option></select></div>' + field('ID do arquivo no Drive', 't_f', t.fileId) + field('Duração (segundos)', 't_d', t.duration, 'number'); },
     afterForm:function(f, t){ f.querySelector('#t_k').value = t.kind || 'music'; },
