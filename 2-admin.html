@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Painel · Rádio Mer</title><meta name="theme-color" content="#0b0d12">
+<link rel="stylesheet" href="style.css">
+<style>
+body{background:#0b0d12}
+.shell{display:flex;min-height:100vh}
+.side{width:230px;background:#10131a;border-right:1px solid var(--line);padding:14px 10px;position:sticky;top:0;height:100vh;overflow:auto;flex:0 0 auto}
+.side h2{font-size:18px;margin:4px 8px 14px}.side h4{margin:16px 8px 6px;font-size:11px;letter-spacing:.12em;color:var(--mut);text-transform:uppercase}
+.side button{display:block;width:100%;text-align:left;background:none;border:0;padding:10px 12px;border-radius:10px;color:#cfd6e4;font-size:14px}
+.side button.on{background:#1b2233;color:#fff}.side button:hover{background:#171c28}
+.main{flex:1;padding:22px;max-width:860px}
+h1{font-size:22px;margin:0 0 4px}.sub{color:var(--mut);margin:0 0 18px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px}
+.box h3{margin:0 0 10px;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut)}
+.f{margin:10px 0}.f label{display:block;font-size:12px;color:var(--mut);margin-bottom:4px}
+.sw{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line)}.sw:last-child{border:0}
+.sw input{width:auto;accent-color:var(--accent);transform:scale(1.4)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{background:#1e6bff;border:0;border-radius:10px;padding:10px 16px;color:#fff;font-weight:600}.btn.sec{background:#222a3a}.btn.red{background:#7f1d1d}
+.list>div{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}.list>div:last-child{border:0}.list .g{flex:1;min-width:0}.list .g b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tag2{font-size:11px;padding:2px 8px;border-radius:99px;background:#222a3a;color:#cfd6e4}
+.badge-ok{background:#064e3b;color:#6ee7b7}.badge-no{background:#3f1d1d;color:#fca5a5}
+#login{max-width:360px;margin:12vh auto;padding:20px}
+.toast{position:fixed;right:16px;bottom:16px;left:auto;transform:none}
+img.th{width:56px;height:56px;border-radius:10px;object-fit:cover;background:#222}
+.menubtn{display:none}
+@media(max-width:760px){.side{position:fixed;left:-240px;z-index:5;transition:.2s}.side.open{left:0}.menubtn{display:block;position:fixed;top:10px;right:10px;z-index:6;background:#222a3a;border:0;border-radius:10px;padding:10px 14px;color:#fff}.main{padding:60px 14px 20px}.g2{grid-template-columns:1fr}}
+.prog{height:6px;background:#222a3a;border-radius:6px;overflow:hidden;margin-top:8px}.prog i{display:block;height:100%;background:#1e6bff;width:0}
+.pill{display:inline-block}
+</style></head><body>
+<div id="login" class="box"><h1>Painel da Rádio</h1><p class="sub">Entre com o código de administrador.</p>
+<div class="f"><input id="code" type="password" placeholder="Código" autocomplete="current-password"></div>
+<button class="btn" style="width:100%" id="enter">Entrar</button><div class="err" id="lerr" style="margin-top:8px"></div></div>
+<button class="menubtn hidden" id="menubtn">☰ Menu</button>
+<div class="shell hidden" id="shell"><div class="side" id="side"></div><div class="main" id="main"></div></div>
+<script src="config.js"></script><script src="core.js"></script><script src="qrcode.js"></script>
+<script>
+(function(){
+var $ = function(id){ return document.getElementById(id); }, E = Radio.esc;
+var TOKEN = sessionStorage.getItem('radio_tok') || '', S = null, cur = 'inicio';
+var toast = function(t, bad){ var d = document.createElement('div'); d.className = 'toast'; if (bad) d.style.background = '#7f1d1d'; d.textContent = t; document.body.appendChild(d); setTimeout(function(){ d.remove(); }, 2600); };
+var A = function(a, p){ return Radio.api(a, p, TOKEN); };
+var pubUrl = location.href.replace(/admin\.html.*$/, '');
+
+var MENU = [['inicio','🏠 Início'],['h','SUA IGREJA'],['aparencia','🎨 Aparência'],['avisos','📣 Avisos'],['doacoes','💚 Doações Pix'],['carteirinhas','🪪 Carteirinhas'],['contato','📞 Contato e redes'],['h','CRESCIMENTO'],['patrocinadores','🤝 Patrocinadores'],['h','SUA RÁDIO'],['musicas','🎵 Músicas'],['playlists','📚 Playlists'],['horarios','⏰ Horários'],['autodj','🤖 AutoDJ'],['recado','🎙️ Recado de voz'],['canais','📡 Canais'],['pedidos','💡 Pedidos de música'],['lives','🔴 Lives da igreja'],['h','CONTA'],['conta','⚙️ Conta']];
+
+async function enter(code){
+  try { await Radio.api('login', {}, code); TOKEN = code; sessionStorage.setItem('radio_tok', code); await reload(); $('login').classList.add('hidden'); $('shell').classList.remove('hidden'); $('menubtn').classList.remove('hidden'); go('inicio'); }
+  catch(e){ $('lerr').textContent = e.message; sessionStorage.removeItem('radio_tok'); }
+}
+$('enter').onclick = function(){ enter($('code').value); };
+$('code').onkeydown = function(e){ if (e.key === 'Enter') enter(this.value); };
+if (TOKEN) enter(TOKEN);
+$('menubtn').onclick = function(){ $('side').classList.toggle('open'); };
+
+async function reload(){ S = await A('adminState'); Radio.offset = S.serverNow - Date.now(); }
+function col(n){ return (S.cols[n] || []); }
+function side(){ $('side').innerHTML = '<h2>📻 ' + E(S.config.name) + '</h2>' + MENU.map(function(m){ return m[0] === 'h' ? '<h4>' + m[1] + '</h4>' : '<button data-k="' + m[0] + '" class="' + (cur === m[0] ? 'on' : '') + '">' + m[1] + '</button>'; }).join('') + '<h4> </h4><button id="out">↩ Sair</button>';
+  document.querySelectorAll('.side button[data-k]').forEach(function(b){ b.onclick = function(){ go(b.dataset.k); $('side').classList.remove('open'); }; });
+  $('out').onclick = function(){ sessionStorage.removeItem('radio_tok'); location.reload(); }; }
+function go(k){ cur = k; side(); $('main').innerHTML = ''; (V[k] || V.inicio)($('main')); window.scrollTo(0, 0); }
+function head(el, t, s){ el.innerHTML = '<h1>' + t + '</h1><p class="sub">' + (s || '') + '</p>'; }
+function box(el, title){ var b = document.createElement('div'); b.className = 'box'; b.innerHTML = (title ? '<h3>' + title + '</h3>' : ''); el.appendChild(b); return b; }
+function field(label, id, val, type, ph){ return '<div class="f"><label>' + label + '</label>' + (type === 'area' ? '<textarea id="' + id + '" rows="3" placeholder="' + E(ph || '') + '">' + E(val || '') + '</textarea>' : '<input id="' + id + '" type="' + (type || 'text') + '" value="' + E(val || '') + '" placeholder="' + E(ph || '') + '">') + '</div>'; }
+function sw(label, sub, id, on){ return '<div class="sw"><div>' + label + (sub ? '<div class="mut">' + sub + '</div>' : '') + '</div><input type="checkbox" id="' + id + '" ' + (on ? 'checked' : '') + '></div>'; }
+async function saveCfg(patch, msg){ try { S.config = await A('setConfig', {patch: patch}); toast(msg || 'Salvo'); side(); } catch(e){ toast(e.message, true); } }
+async function saveItem(c, item, msg){ try { var r = await A('save', {col: c, item: item}); await reload(); toast(msg || 'Salvo'); return r; } catch(e){ toast(e.message, true); } }
+async function delItem(c, id){ if (!confirm('Excluir?')) return; try { await A('del', {col: c, id: id}); await reload(); toast('Excluído'); go(cur); } catch(e){ toast(e.message, true); } }
+function val(id){ return $(id).value; } function chk(id){ return $(id).checked; }
+function uploadFile(file, onProg){
+  return (async function(){
+    var s = await A('upStart'); var CH = 2 * 1024 * 1024; var n = Math.ceil(file.size / CH);
+    for (var i = 0; i < n; i++){
+      var buf = await file.slice(i * CH, (i + 1) * CH).arrayBuffer(); var bytes = new Uint8Array(buf), bin = '';
+      for (var k = 0; k < bytes.length; k += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(k, k + 8192));
+      await A('upChunk', {tmpId: s.tmpId, index: i, data: btoa(bin)}); onProg && onProg((i + 1) / (n + 1));
+    }
+    var r = await A('upFinish', {tmpId: s.tmpId, name: file.name, mime: file.type}); onProg && onProg(1); return r;
+  })();
+}
+function duration(file){ return new Promise(function(res){ var a = new Audio(); a.preload = 'metadata'; a.onloadedmetadata = function(){ res(Math.round(a.duration)); }; a.onerror = function(){ res(0); }; a.src = URL.createObjectURL(file); }); }
+function imgShrink(file, max){ return new Promise(function(res, rej){ var im = new Image(); im.onload = function(){ var r = Math.min(1, max / Math.max(im.width, im.height)); var c = document.createElement('canvas'); c.width = Math.round(im.width * r); c.height = Math.round(im.height * r); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); c.toBlob(function(b){ res(new File([b], 'imagem.jpg', {type: 'image/jpeg'})); }, 'image/jpeg', 0.85); }; im.onerror = rej; im.src = URL.createObjectURL(file); }); }
+async function pickImage(accept, max, cb){ var i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.onchange = async function(){ if (!i.files[0]) return; toast('Enviando imagem...'); try { var f = await imgShrink(i.files[0], max); var r = await uploadFile(f); cb(r.fileId); } catch(e){ toast(e.message, true); } }; i.click(); }
+
+var V = {};
+V.inicio = function(el){
+  head(el, 'Olá, André', 'Painel da ' + E(S.config.name));
+  var pend = col('requests').filter(function(r){ return r.status === 'pending'; }).length;
+  var b = box(el, 'Sua rádio');
+  b.innerHTML += '<p>Link público pros ouvintes (compartilhe com a igreja):</p><div class="pix" style="word-break:break-all;background:#0e1219;border:1px dashed var(--line);padding:12px;border-radius:12px">' + E(pubUrl) + '</div><div class="row" style="display:flex;gap:8px;margin-top:10px"><button class="btn" id="cp">Copiar link</button><a class="btn sec" style="text-decoration:none" target="_blank" href="' + E(pubUrl) + '">Abrir minha rádio</a><button class="btn sec" id="wa">Enviar no WhatsApp</button></div>';
+  $('cp').onclick = function(){ navigator.clipboard.writeText(pubUrl); toast('Link copiado'); };
+  $('wa').onclick = function(){ window.open('https://wa.me/?text=' + encodeURIComponent('Ouça a ' + S.config.name + ': ' + pubUrl)); };
+  var tr = col('tracks').filter(function(t){ return t.kind === 'music'; }).length;
+  var b2 = box(el, 'Resumo');
+  b2.innerHTML += '<div class="list"><div><div class="g"><b>Músicas</b></div><span class="tag2">' + tr + '</span></div><div><div class="g"><b>Playlists</b></div><span class="tag2">' + col('playlists').length + '</span></div><div><div class="g"><b>Pedidos de música aguardando</b></div><span class="tag2">' + pend + '</span></div><div><div class="g"><b>Membros cadastrados</b></div><span class="tag2">' + col('members').length + '</span></div><div><div class="g"><b>Ouvintes agora</b></div><span class="tag2" id="nl">...</span></div></div>';
+  Radio.api('state').then(function(s){ $('nl').textContent = s.listeners; }).catch(function(){});
+  if (!tr) { var b3 = box(el, 'Primeiros passos'); b3.innerHTML += '<p>1. Vá em <b>Músicas</b> e envie seus MP3.<br>2. Em <b>Playlists</b>, monte uma lista e marque como padrão no <b>AutoDJ</b>.<br>3. Compartilhe o link com a igreja.</p>'; }
+};
+
+V.aparencia = function(el){
+  head(el, 'Aparência', 'Como a sua rádio aparece pra igreja'); var c = S.config;
+  var b = box(el, 'Endereço da rádio');
+  b.innerHTML += '<div class="pix" style="word-break:break-all;background:#0e1219;border:1px dashed var(--line);padding:12px;border-radius:12px">' + E(pubUrl) + '</div><p class="mut">O endereço depende de onde o site está hospedado. Para trocar, fale com o suporte.</p>';
+  var t = box(el, 'Tipo de rádio');
+  t.innerHTML += '<div class="g2"><button class="btn ' + (c.radioType !== 'common' ? '' : 'sec') + '" id="tc">⛪ De igreja</button><button class="btn ' + (c.radioType === 'common' ? '' : 'sec') + '" id="tr">📻 Rádio comum</button></div><p class="mut">De igreja: versículo do dia e carteirinha de membro. Rádio comum esconde essas partes. Nada é apagado.</p>';
+  $('tc').onclick = function(){ saveCfg({radioType: 'church'}).then(function(){ go('aparencia'); }); }; $('tr').onclick = function(){ saveCfg({radioType: 'common'}).then(function(){ go('aparencia'); }); };
+  var i = box(el, 'Identidade');
+  i.innerHTML += field('Nome da rádio', 'ap_name', c.name) + field('Nome da igreja (na carteirinha)', 'ap_church', c.churchName) + field('Frase da rádio', 'ap_tag', c.tagline) +
+   '<div class="g2"><div class="f"><label>Cor da rádio</label><input type="color" id="ap_color" value="' + E(c.color) + '" style="height:46px;padding:4px"></div><div class="f"><label>Formato da logo</label><select id="ap_shape"><option value="square">Quadrada</option><option value="rounded">Arredondada</option><option value="round">Redonda</option></select></div></div>' +
+   '<div class="f"><label>Logo</label><div style="display:flex;gap:10px;align-items:center"><img class="th" id="logoimg" src="' + (c.logoFileId ? Radio.img(c.logoFileId, 120) : '') + '"><button class="btn sec" id="logoBtn">Trocar logo</button></div></div>' +
+   '<div class="f"><label>Capa (foto atrás do play, em pé fica melhor)</label><div style="display:flex;gap:10px;align-items:center"><img class="th" id="coverimg" src="' + (c.coverFileId ? Radio.img(c.coverFileId, 120) : '') + '"><button class="btn sec" id="coverBtn">Enviar foto</button><button class="btn sec" id="coverX">Remover</button></div></div>' +
+   '<div class="f"><label>Quanto a capa embaça</label><select id="ap_blur"><option value="light">Leve</option><option value="medium">Médio</option><option value="strong">Forte</option></select></div>';
+  $('ap_shape').value = c.shape || 'square'; $('ap_blur').value = c.blur || 'medium';
+  $('logoBtn').onclick = function(){ pickImage('image/*', 600, function(id){ saveCfg({logoFileId: id}).then(function(){ $('logoimg').src = Radio.img(id, 120); }); }); };
+  $('coverBtn').onclick = function(){ pickImage('image/*', 1200, function(id){ saveCfg({coverFileId: id}).then(function(){ $('coverimg').src = Radio.img(id, 120); }); }); };
+  $('coverX').onclick = function(){ saveCfg({coverFileId: ''}); $('coverimg').removeAttribute('src'); };
+  var tg = c.toggles || {};
+  var o = box(el, 'O que aparece pro ouvinte');
+  var T = [['install','Botão Instalar app','O convite no topo pra pôr a rádio na tela do celular.'],['listeners','Número de ouvintes','Quantas pessoas estão ouvindo, ao lado do AO VIVO.'],['share','Botão Indicar','O ouvinte manda a rádio pra outras pessoas.'],['volume','Botão de volume','Sem ele, o volume é o do celular.'],['social','Redes sociais','WhatsApp, Instagram e Facebook embaixo do play.'],['verse','Versículo','O cartão com o versículo do dia.'],['next','Próximas músicas','A fileira "A seguir".'],['contribute','Botão Contribua','O botão da tela inicial e a aba Contribuir (oferta/Pix).']];
+  o.innerHTML += T.map(function(x){ return sw(x[1], x[2], 'tg_' + x[0], tg[x[0]] !== false); }).join('');
+  var v = box(el, 'No ar');
+  v.innerHTML += field('Versículo do dia (deixe vazio para usar o automático)', 'ap_vt', c.verseText, 'area') + field('Referência', 'ap_vr', c.verseRef, 'text', 'Salmos 100:4');
+  var s = document.createElement('button'); s.className = 'btn'; s.textContent = 'Salvar aparência'; el.appendChild(s);
+  s.onclick = function(){ var t2 = {}; T.forEach(function(x){ t2[x[0]] = chk('tg_' + x[0]); }); saveCfg({name: val('ap_name'), churchName: val('ap_church'), tagline: val('ap_tag'), color: val('ap_color'), shape: val('ap_shape'), blur: val('ap_blur'), toggles: t2, verseText: val('ap_vt'), verseRef: val('ap_vr')}, 'Aparência salva'); };
+};
+
+V.doacoes = function(el){
+  head(el, 'Doações Pix', 'Dízimo e oferta pelo Pix, dentro da rádio'); var p = S.config.pix || {};
+  var b = box(el, 'Para onde vai o dinheiro');
+  b.innerHTML += '<p class="mut">Sem a chave Pix, o botão de contribuir não aparece na rádio. É o único campo obrigatório.</p>' + field('Chave Pix', 'px_key', p.key, 'text', 'Cole a chave Pix da igreja') +
+   '<div class="f"><label>Tipo da chave</label><select id="px_type"><option value="">-</option><option>CPF</option><option>CNPJ</option><option>Telefone</option><option>E-mail</option><option>Aleatória</option></select></div>' + field('Nome de quem recebe', 'px_name', p.name, 'text', 'Ex.: Igreja Mer');
+  $('px_type').value = p.type || '';
+  var c = box(el, 'O que o ouvinte lê'); c.innerHTML += field('Convite', 'px_inv', p.invite, 'text', 'Sua oferta mantém a rádio no ar') + field('Instruções', 'px_ins', p.instructions, 'area', 'Envie o comprovante no WhatsApp da secretaria');
+  var s = document.createElement('button'); s.className = 'btn'; s.textContent = 'Salvar'; el.appendChild(s);
+  s.onclick = function(){ saveCfg({pix: {key: val('px_key').trim(), type: val('px_type'), name: val('px_name'), invite: val('px_inv'), instructions: val('px_ins')}}); };
+};
+
+V.contato = function(el){
+  head(el, 'Contato e redes', 'Como os ouvintes encontram a igreja'); var c = S.config.contact || {};
+  var b = box(el, 'Falar com a igreja'); b.innerHTML += field('WhatsApp', 'ct_wa', c.whatsapp, 'text', '(85) 98888-8888') + '<p class="mut">Vira o botão "Falar no WhatsApp" na tela do ouvinte.</p>';
+  var r = box(el, 'Redes da igreja'); r.innerHTML += field('Instagram', 'ct_ig', c.instagram, 'text', '@suaigreja') + field('Facebook', 'ct_fb', c.facebook, 'text', 'facebook.com/suaigreja');
+  var s = document.createElement('button'); s.className = 'btn'; s.textContent = 'Salvar'; el.appendChild(s);
+  s.onclick = function(){ saveCfg({contact: {whatsapp: val('ct_wa'), instagram: val('ct_ig'), facebook: val('ct_fb')}}); };
+};
+
+function crud(el, cfg){
+  var items = col(cfg.col); var b = box(el, cfg.title || '');
+  var btn = document.createElement('button'); btn.className = 'btn'; btn.textContent = '+ ' + cfg.add; btn.style.marginBottom = '10px'; b.appendChild(btn);
+  var list = document.createElement('div'); list.className = 'list'; b.appendChild(list);
+  function draw(){ list.innerHTML = items.length ? '' : '<p class="mut">Nada por aqui ainda.</p>';
+    items.forEach(function(it){ var d = document.createElement('div'); d.innerHTML = (cfg.thumb ? '<img class="th" src="' + (cfg.thumb(it) || '') + '">' : '') + '<div class="g"><b>' + E(cfg.label(it)) + '</b><span class="mut">' + E(cfg.sub ? cfg.sub(it) : '') + '</span></div>' + (cfg.extra ? cfg.extra(it) : '');
+      var e = document.createElement('button'); e.className = 'btn sec'; e.textContent = 'Editar'; e.onclick = function(){ form(it); }; var x = document.createElement('button'); x.className = 'btn red'; x.textContent = '🗑'; x.onclick = function(){ delItem(cfg.col, it.id); };
+      d.appendChild(e); d.appendChild(x); list.appendChild(d); }); }
+  function form(it){ it = it || {}; var f = box(el, (it.id ? 'Editar' : 'Novo')); f.innerHTML += cfg.form(it);
+    var s = document.createElement('button'); s.className = 'btn'; s.textContent = 'Salvar'; var c = document.createElement('button'); c.className = 'btn sec'; c.textContent = 'Cancelar'; c.style.marginLeft = '8px';
+    f.appendChild(s); f.appendChild(c); c.onclick = function(){ f.remove(); };
+    if (cfg.afterForm) cfg.afterForm(f, it);
+    s.onclick = async function(){ var o = cfg.read(it); if (!o) return; o.id = it.id; await saveItem(cfg.col, o); go(cur); }; f.scrollIntoView(); }
+  btn.onclick = function(){ form(); }; draw();
+}
+
+V.avisos = function(el){ head(el, 'Avisos', 'Comunicados da igreja na rádio');
+  crud(el, {col:'notices', add:'Novo aviso', label:function(n){return n.title;}, sub:function(n){return n.text;}, extra:function(n){ return '<span class="tag2 ' + (n.active !== false ? 'badge-ok' : 'badge-no') + '">' + (n.active !== false ? 'ativo' : 'oculto') + '</span>'; },
+    form:function(n){ return field('Título', 'n_t', n.title) + field('Texto', 'n_x', n.text, 'area') + field('Mostrar até (opcional)', 'n_u', n.until, 'date') + sw('Ativo', '', 'n_a', n.active !== false); },
+    read:function(n){ if (!val('n_t').trim()) { toast('Informe o título', true); return null; } return {title: val('n_t'), text: val('n_x'), until: val('n_u'), active: chk('n_a')}; }}); };
+
+V.patrocinadores = function(el){ head(el, 'Patrocinadores', 'Banners de apoiadores na rádio'); var img = '';
+  crud(el, {col:'sponsors', add:'Novo patrocinador', label:function(s){return s.name;}, sub:function(s){return s.link;}, thumb:function(s){return Radio.img(s.imageFileId, 120);},
+    form:function(s){ img = s.imageFileId || ''; return field('Nome', 's_n', s.name) + field('Link (opcional)', 's_l', s.link, 'url', 'https://') + '<div class="f"><label>Banner</label><button class="btn sec" id="s_img">Enviar imagem</button> <span id="s_ok" class="ok"></span></div>' + sw('Ativo', '', 's_a', s.active !== false); },
+    afterForm:function(f){ f.querySelector('#s_img').onclick = function(){ pickImage('image/*', 800, function(id){ img = id; f.querySelector('#s_ok').textContent = 'Imagem enviada'; }); }; },
+    read:function(s){ if (!val('s_n').trim() || !img) { toast('Informe nome e imagem', true); return null; } return {name: val('s_n'), link: val('s_l'), imageFileId: img, active: chk('s_a')}; }}); };
+
+V.canais = function(el){ head(el, 'Canais', 'Listas separadas: Louvor, Adoração, Pregação. O ouvinte escolhe qual ouvir.');
+  var opts = function(sel){ return '<option value="">-</option>' + col('playlists').map(function(p){ return '<option value="' + p.id + '"' + (p.id === sel ? ' selected' : '') + '>' + E(p.name) + '</option>'; }).join(''); };
+  crud(el, {col:'channels', add:'Novo canal', label:function(c){return c.name;}, sub:function(c){ var p = col('playlists').filter(function(x){return x.id===c.playlistId;})[0]; return p ? 'Playlist: ' + p.name : 'sem playlist'; },
+    form:function(c){ return field('Nome do canal', 'c_n', c.name, 'text', 'Louvor') + '<div class="f"><label>Playlist que toca neste canal</label><select id="c_p">' + opts(c.playlistId) + '</select></div>'; },
+    read:function(c){ if (!val('c_n').trim() || !val('c_p')) { toast('Informe nome e playlist', true); return null; } return {name: val('c_n'), playlistId: val('c_p')}; }}); };
+
+V.lives = function(el){ head(el, 'Lives da igreja', 'Publique lives e vídeos na rádio (YouTube)'); var lv = S.config.live || {};
+  var b = box(el, 'Ao vivo agora'); b.innerHTML += sw('Mostrar a live na rádio', 'Liga e desliga o cartão "Ao vivo agora"', 'lv_a', lv.active) + field('Título', 'lv_t', lv.title, 'text', 'Culto de domingo') + field('Link do YouTube', 'lv_u', lv.url, 'url', 'https://youtube.com/live/...');
+  var s = document.createElement('button'); s.className = 'btn'; s.textContent = 'Salvar'; b.appendChild(s); s.onclick = function(){ saveCfg({live: {active: chk('lv_a'), title: val('lv_t'), url: val('lv_u')}}); };
+  crud(el, {col:'lives', title:'Vídeos fixos', add:'Novo vídeo', label:function(l){return l.title || l.url;}, sub:function(l){return l.url;}, form:function(l){ return field('Título', 'l_t', l.title) + field('Link do YouTube', 'l_u', l.url, 'url') + sw('Ativo', '', 'l_a', l.active !== false); }, read:function(l){ if (!val('l_u').trim()) { toast('Informe o link', true); return null; } return {title: val('l_t'), url: val('l_u'), active: chk('l_a')}; }}); };
+
+V.pedidos = function(el){ head(el, 'Pedidos de música', 'O membro pede, você aprova'); var rs = col('requests').slice().sort(function(a, b){ return b.at - a.at; });
+  var b = box(el, ''); var list = document.createElement('div'); list.className = 'list'; b.appendChild(list);
+  if (!rs.length) list.innerHTML = '<p class="mut">Nenhum pedido recebido ainda.</p>';
+  rs.forEach(function(r){ var d = document.createElement('div'); d.innerHTML = '<div class="g"><b>' + E(r.title) + '</b><span class="mut">' + E(r.name || 'anônimo') + ' · ' + new Date(r.at).toLocaleString('pt-BR') + '</span></div><span class="tag2 ' + (r.status === 'approved' ? 'badge-ok' : r.status === 'rejected' ? 'badge-no' : '') + '">' + ({approved:'aprovado', rejected:'recusado', pending:'aguardando'}[r.status] || r.status) + '</span>';
+    ['approved:Aprovar:btn', 'rejected:Recusar:btn sec'].forEach(function(x){ var p = x.split(':'); var bt = document.createElement('button'); bt.className = p[2]; bt.textContent = p[1]; bt.onclick = async function(){ await A('review', {id: r.id, status: p[0]}); await reload(); go('pedidos'); }; d.appendChild(bt); });
+    var x = document.createElement('button'); x.className = 'btn red'; x.textContent = '🗑'; x.onclick = function(){ delItem('requests', r.id); }; d.appendChild(x); list.appendChild(d); }); };
+
+V.carteirinhas = function(el){ head(el, 'Carteirinhas', 'Cadastro pelo link, foto e QR. O membro se cadastra na aba "Membro" da rádio.');
+  var b = box(el, 'Link de cadastro'); b.innerHTML += '<div class="pix" style="word-break:break-all;background:#0e1219;border:1px dashed var(--line);padding:12px;border-radius:12px">' + E(pubUrl) + '</div><p class="mut">Peça pro membro abrir o link e tocar em "Membro".</p>';
+  crud(el, {col:'members', title:'Membros', add:'Novo membro', label:function(m){return m.name;}, sub:function(m){return (m.role || 'Membro') + ' · ' + (m.phone || '');}, thumb:function(m){return Radio.img(m.photoFileId, 120);},
+    extra:function(m){ return '<a class="btn sec" style="text-decoration:none" target="_blank" href="' + E(pubUrl) + 'index.html#/carteirinha/' + m.id + '">Ver carteirinha</a>'; },
+    form:function(m){ return field('Nome', 'm_n', m.name) + field('Cargo', 'm_r', m.role || 'Membro') + field('WhatsApp', 'm_p', m.phone) + field('Nascimento', 'm_b', m.birth, 'date'); },
+    read:function(m){ if (!val('m_n').trim()) { toast('Informe o nome', true); return null; } return Object.assign({}, m, {name: val('m_n'), role: val('m_r'), phone: val('m_p'), birth: val('m_b'), at: m.at || Date.now()}); }}); };
+
+// ---- músicas ----
+V.musicas = function(el){ head(el, 'Músicas', 'Envie MP3 e vinhetas. Elas ficam guardadas no seu Google Drive.');
+  var b = box(el, 'Enviar áudio');
+  b.innerHTML += '<div class="g2"><div class="f"><label>Tipo</label><select id="up_kind"><option value="music">Música</option><option value="jingle">Vinheta / comercial</option></select></div><div class="f"><label>Arquivo(s) MP3</label><input type="file" id="up_file" accept="audio/*" multiple></div></div><button class="btn" id="up_go">Enviar</button><div id="up_log" class="mut" style="margin-top:10px"></div><div class="prog"><i id="up_bar"></i></div><p class="mut">Dica: nome do arquivo "Cantor - Música.mp3" já preenche o título e o artista.</p>';
+  $('up_go').onclick = async function(){ var fs = $('up_file').files; if (!fs.length) return toast('Escolha os arquivos', true); $('up_go').disabled = true;
+    for (var i = 0; i < fs.length; i++){ var f = fs[i]; $('up_log').textContent = 'Enviando ' + (i + 1) + '/' + fs.length + ': ' + f.name;
+      try { var d = await duration(f); if (!d) throw new Error('não consegui ler a duração de ' + f.name); var r = await uploadFile(f, function(p){ $('up_bar').style.width = (p * 100) + '%'; });
+        var base = f.name.replace(/\.[^.]+$/, ''); var parts = base.split(' - '); var item = {title: (parts.length > 1 ? parts.slice(1).join(' - ') : base).trim(), artist: parts.length > 1 ? parts[0].trim() : '', fileId: r.fileId, duration: d, kind: val('up_kind')};
+        await A('save', {col: 'tracks', item: item}); } catch(e){ toast(e.message, true); } }
+    await reload(); toast('Envio concluído'); go('musicas'); };
+  crud(el, {col:'tracks', title:'Biblioteca', add:'Adicionar por link do Drive', label:function(t){return t.title;}, sub:function(t){return (t.artist ? t.artist + ' · ' : '') + Radio.fmt(t.duration) + ' · ' + ({music:'música', jingle:'vinheta', voice:'recado'}[t.kind] || t.kind);},
+    form:function(t){ return field('Título', 't_t', t.title) + field('Artista', 't_a', t.artist) + '<div class="f"><label>Tipo</label><select id="t_k"><option value="music">Música</option><option value="jingle">Vinheta / comercial</option><option value="voice">Recado</option></select></div>' + field('ID do arquivo no Drive', 't_f', t.fileId) + field('Duração (segundos)', 't_d', t.duration, 'number'); },
+    afterForm:function(f, t){ f.querySelector('#t_k').value = t.kind || 'music'; },
+    read:function(t){ if (!val('t_t').trim() || !val('t_f').trim() || !(+val('t_d') > 0)) { toast('Preencha título, arquivo e duração', true); return null; } return {title: val('t_t'), artist: val('t_a'), kind: val('t_k'), fileId: val('t_f').trim(), duration: +val('t_d')}; }});
+};
+
+V.playlists = function(el){ head(el, 'Playlists', 'Listas por estilo ou momento, para usar nos horários e canais.');
+  var tracks = col('tracks').filter(function(t){ return t.kind === 'music'; });
+  crud(el, {col:'playlists', add:'Nova playlist', label:function(p){return p.name;}, sub:function(p){ return (p.trackIds || []).length + ' músicas'; },
+    form:function(p){ var sel = p.trackIds || []; return field('Nome', 'p_n', p.name, 'text', 'Louvor da manhã') + '<div class="f"><label>Músicas (marque na ordem que quer tocar)</label><div id="p_list" style="max-height:300px;overflow:auto">' + tracks.map(function(t){ var on = sel.indexOf(t.id) >= 0; return '<div class="sw"><div>' + E(t.title) + '<div class="mut">' + E(t.artist || '') + '</div></div><input type="checkbox" value="' + t.id + '" ' + (on ? 'checked' : '') + '></div>'; }).join('') + '</div></div>'; },
+    read:function(p){ var ids = [].slice.call(document.querySelectorAll('#p_list input:checked')).map(function(x){ return x.value; }); var old = (p.trackIds || []).filter(function(i){ return ids.indexOf(i) >= 0; }); ids.forEach(function(i){ if (old.indexOf(i) < 0) old.push(i); });
+      if (!val('p_n').trim() || !old.length) { toast('Informe o nome e marque músicas', true); return null; } return {name: val('p_n'), trackIds: old}; }}); };
+
+V.horarios = function(el){ head(el, 'Horários', 'Qual playlist toca em cada horário. Sem horário marcado, toca a playlist padrão.');
+  var opts = function(sel){ return col('playlists').map(function(p){ return '<option value="' + p.id + '"' + (p.id === sel ? ' selected' : '') + '>' + E(p.name) + '</option>'; }).join(''); };
+  var DN = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  crud(el, {col:'schedule', add:'Novo horário', label:function(s){ return s.start + ' às ' + s.end; }, sub:function(s){ var p = col('playlists').filter(function(x){return x.id===s.playlistId;})[0]; return (p ? p.name : '?') + ' · ' + ((s.days || []).length === 7 || !(s.days || []).length ? 'todos os dias' : s.days.map(function(d){return DN[d];}).join(', ')); },
+    form:function(s){ var d = s.days && s.days.length ? s.days : [0,1,2,3,4,5,6]; return '<div class="g2">' + field('Início', 'h_s', s.start || '08:00', 'time') + field('Fim', 'h_e', s.end || '12:00', 'time') + '</div><div class="f"><label>Playlist</label><select id="h_p">' + opts(s.playlistId) + '</select></div><div class="f"><label>Dias</label><div style="display:flex;gap:10px;flex-wrap:wrap">' + DN.map(function(n, i){ return '<label style="display:flex;gap:4px;align-items:center;font-size:14px;color:#fff"><input style="width:auto" type="checkbox" class="h_d" value="' + i + '" ' + (d.indexOf(i) >= 0 ? 'checked' : '') + '>' + n + '</label>'; }).join('') + '</div></div>'; },
+    read:function(s){ if (!val('h_p')) { toast('Crie uma playlist antes', true); return null; } return {start: val('h_s'), end: val('h_e'), playlistId: val('h_p'), days: [].slice.call(document.querySelectorAll('.h_d:checked')).map(function(x){ return +x.value; })}; }}); };
+
+V.autodj = function(el){ head(el, 'AutoDJ', 'Sua rádio tocando sozinha, 24 horas. Todo ouvinte escuta a mesma música no mesmo segundo.'); var c = S.config;
+  var b = box(el, 'Como o seu AutoDJ toca'); var nm = col('tracks').filter(function(t){ return t.kind === 'music'; }).length, nj = col('tracks').filter(function(t){ return t.kind === 'jingle'; }).length;
+  b.innerHTML += '<div class="list"><div><div class="g"><b>Músicas</b><span class="mut">Só Músicas é obrigatório</span></div><span class="tag2 ' + (nm ? 'badge-ok' : 'badge-no') + '">' + nm + '</span></div><div><div class="g"><b>Horários</b></div><span class="tag2">' + col('schedule').length + '</span></div><div><div class="g"><b>Playlists</b></div><span class="tag2">' + col('playlists').length + '</span></div><div><div class="g"><b>Vinhetas e comerciais</b></div><span class="tag2">' + nj + '</span></div></div>';
+  var d = box(el, 'Ajustes');
+  d.innerHTML += '<div class="f"><label>Playlist padrão (quando não há horário marcado)</label><select id="a_pl"><option value="">Todas as músicas</option>' + col('playlists').map(function(p){ return '<option value="' + p.id + '"' + (p.id === c.defaultPlaylistId ? ' selected' : '') + '>' + E(p.name) + '</option>'; }).join('') + '</select></div>' +
+    field('Vinheta a cada quantas músicas (0 desliga)', 'a_je', c.jingleEvery, 'number') + sw('Hora certa', 'A rádio fala a hora cheia sozinha (voz do aparelho do ouvinte)', 'a_ht', c.timeAnnounce);
+  var s = document.createElement('button'); s.className = 'btn'; s.textContent = 'Salvar AutoDJ'; el.appendChild(s);
+  s.onclick = function(){ saveCfg({defaultPlaylistId: val('a_pl'), jingleEvery: +val('a_je') || 0, timeAnnounce: chk('a_ht')}); };
+  var pv = box(el, 'Agora no ar (prévia)'); var st2 = {config: c, tracks: col('tracks'), playlists: col('playlists'), schedule: col('schedule')}; var plan = Radio.activePlan(st2, Radio.now()); var pos = Radio.position(plan, Radio.now());
+  pv.innerHTML += pos ? '<b>' + E(pos.track.title) + '</b><div class="mut">' + E(pos.track.artist || '') + ' · faltam ' + Radio.fmt(pos.remaining) + '</div>' : '<p class="mut">Envie músicas para a rádio entrar no ar.</p>'; };
+
+V.recado = function(el){ head(el, 'Recado de voz', 'Grave e ele entra na rádio em segundos: a música abaixa e volta sozinha.');
+  var b = box(el, 'Gravar'); b.innerHTML += '<div class="row" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="rec">● Gravar</button><button class="btn sec hidden" id="stop">■ Parar</button><span id="rtime" class="mut"></span></div><audio id="rprev" controls class="hidden" style="width:100%;margin-top:10px"></audio><div class="f"><input id="rname" placeholder="Nome do recado (ex.: Aviso culto)"></div><div class="row" style="display:flex;gap:8px"><button class="btn hidden" id="rsend">Enviar e colocar no ar agora</button></div><p class="mut">Ou envie um arquivo pronto:</p><input type="file" id="rfile" accept="audio/*">';
+  var mr, chunks = [], blob = null, t0;
+  $('rec').onclick = async function(){ try { var s = await navigator.mediaDevices.getUserMedia({audio: true}); chunks = []; var mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'; mr = new MediaRecorder(s, {mimeType: mime}); mr.ondataavailable = function(e){ chunks.push(e.data); }; mr.onstop = function(){ blob = new Blob(chunks, {type: mime}); s.getTracks().forEach(function(t){ t.stop(); }); $('rprev').src = URL.createObjectURL(blob); $('rprev').classList.remove('hidden'); $('rsend').classList.remove('hidden'); }; mr.start(); t0 = Date.now(); $('rec').classList.add('hidden'); $('stop').classList.remove('hidden'); var iv = setInterval(function(){ if (!mr || mr.state === 'inactive') return clearInterval(iv); $('rtime').textContent = Math.round((Date.now() - t0) / 1000) + 's'; }, 500); } catch(e){ toast('Não consegui acessar o microfone', true); } };
+  $('stop').onclick = function(){ mr.stop(); $('stop').classList.add('hidden'); $('rec').classList.remove('hidden'); };
+  async function send(file, name){ toast('Enviando...'); try { var d = await duration(file); if (!d) throw new Error('áudio inválido'); var r = await uploadFile(file); var t = await A('save', {col: 'tracks', item: {title: name || 'Recado', artist: '', fileId: r.fileId, duration: d, kind: 'voice'}}); await A('playNow', {id: t.id}); await reload(); toast('No ar! Ouvintes recebem em até 20 segundos'); go('recado'); } catch(e){ toast(e.message, true); } }
+  $('rsend').onclick = function(){ if (blob) send(new File([blob], 'recado.' + (blob.type.indexOf('mp4') > 0 ? 'm4a' : 'webm'), {type: blob.type}), val('rname')); };
+  $('rfile').onchange = function(){ if (this.files[0]) send(this.files[0], val('rname') || this.files[0].name); };
+  var vs = col('tracks').filter(function(t){ return t.kind === 'voice'; }); var l = box(el, 'Recados anteriores'); l.innerHTML += '<div class="list">' + (vs.length ? '' : '<p class="mut">Nenhum.</p>') + '</div>';
+  vs.forEach(function(t){ var d = document.createElement('div'); d.innerHTML = '<div class="g"><b>' + E(t.title) + '</b><span class="mut">' + Radio.fmt(t.duration) + '</span></div>'; var p = document.createElement('button'); p.className = 'btn'; p.textContent = 'Tocar na rádio'; p.onclick = async function(){ await A('playNow', {id: t.id}); toast('No ar'); }; var x = document.createElement('button'); x.className = 'btn red'; x.textContent = '🗑'; x.onclick = function(){ delItem('tracks', t.id); }; d.appendChild(p); d.appendChild(x); l.querySelector('.list').appendChild(d); }); };
+
+V.conta = function(el){ head(el, 'Conta', 'Seus dados de acesso');
+  var b = box(el, 'Código de administrador'); b.innerHTML += '<p class="mut">Quem tem este código controla a rádio. Troque o código provisório agora.</p>' + field('Novo código (mín. 6 caracteres)', 'cc_n', '', 'password');
+  var s = document.createElement('button'); s.className = 'btn'; s.textContent = 'Trocar código'; b.appendChild(s);
+  s.onclick = async function(){ var n = val('cc_n'); if (n.length < 6) return toast('Código curto demais', true); try { await A('setAdminCode', {newCode: n}); TOKEN = n; sessionStorage.setItem('radio_tok', n); toast('Código trocado'); } catch(e){ toast(e.message, true); } };
+  var d = box(el, 'Seus dados'); d.innerHTML += '<p class="mut">Tudo fica numa planilha e numa pasta chamadas "Rádio Mer" no seu Google Drive (conta mer26canal@gmail.com).</p>';
+};
+})();
+</script></body></html>

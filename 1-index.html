@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Rádio Mer</title><meta name="theme-color" content="#1e6bff">
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg"><link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head><body>
+<div class="bg" id="bg"></div>
+<div class="app" id="app">
+  <div id="installBar" class="install hidden"><img id="insIcon" width="40" height="40" style="border-radius:10px"><div class="t"><b id="insName">Rádio Mer</b>App grátis, sem loja</div><button class="btn" id="insBtn">Instalar</button><button class="round" id="insX" style="width:30px;height:30px;font-size:13px">✕</button></div>
+  <div class="top"><button class="pill" id="shareBtn">↗ Indicar</button><span class="pill live" id="liveBadge"><i class="dot"></i> AO VIVO<span id="lcount"></span></span></div>
+
+  <div class="view" id="v-ouvir">
+    <div class="hero">
+      <div class="logo" id="logo"></div>
+      <h1 id="name">Rádio Mer</h1><div class="tag" id="tagline"></div>
+      <div class="np" id="npLabel">Toque para ouvir</div>
+      <div class="title" id="title">A programação já está no ar</div><div class="artist" id="artist"></div>
+      <div class="bar"><i id="prog"></i></div>
+      <div class="ctl"><button class="play" id="play">▶</button><button class="round" id="muteBtn">🔊</button><input class="vol" id="vol" type="range" min="0" max="1" step="0.05" value="1"></div>
+    </div>
+    <div class="soc" id="soc"></div>
+    <div id="liveCard" class="card hidden"><h3>🔴 Ao vivo agora</h3><div id="liveBody"></div></div>
+    <div class="chips" id="chips"></div>
+    <div id="noticeCard" class="card hidden"><h3>Avisos da igreja</h3><div id="notices"></div></div>
+    <div id="verseCard" class="card verse"><h3>Versículo do dia</h3><q id="verseText"></q><small id="verseRef"></small></div>
+    <div id="nextWrap"><div class="mut" style="margin:14px 16px 6px">A seguir</div><div class="next" id="next"></div></div>
+    <div id="sponsCard" class="card hidden"><h3>Apoiadores</h3><div class="spons" id="spons"></div></div>
+    <div id="contribBtn" class="card" style="text-align:center"><button class="btn alt" style="width:100%;padding:14px" id="goPix">♡ Contribua com a rádio</button></div>
+  </div>
+
+  <div class="view hidden" id="v-sugerir">
+    <div class="card"><h3>Sugerir música</h3>
+      <span class="lbl">Seu nome (opcional)</span><input id="sgName" maxlength="60">
+      <span class="lbl">Nome da música / cantor</span><input id="sgTitle" maxlength="120" placeholder="Ex.: Grande é o Senhor - Adhemar de Campos">
+      <button class="btn" style="width:100%;margin-top:12px" id="sgSend">Enviar pedido</button><div id="sgMsg" class="mut" style="margin-top:8px"></div></div>
+    <div class="card hidden" id="apprCard"><h3>Pedidos aprovados</h3><div id="appr"></div></div>
+  </div>
+
+  <div class="view hidden" id="v-contribuir">
+    <div class="card" id="pixCard"><h3>Dízimos e ofertas</h3><div id="pixBody"></div></div>
+  </div>
+
+  <div class="view hidden" id="v-membro">
+    <div class="card" id="memberCard"></div>
+  </div>
+
+  <div class="tabs"><button class="on" data-v="ouvir">📻 Ouvir</button><button data-v="sugerir">💡 Sugerir</button><button data-v="contribuir" id="tabContrib">♡ Contribuir</button><button data-v="membro" id="tabMembro">🪪 Membro</button></div>
+</div>
+<script src="config.js"></script><script src="core.js"></script><script src="qrcode.js"></script>
+<script>
+(function(){
+var $ = function(id){ return document.getElementById(id); };
+var st = null, plan = null, forcedChannel = null, playing = false, lastIdx = -1, lastTrackId = null, duck = 1;
+var au = new Audio(); au.preload = 'auto'; au.crossOrigin = null;
+var voice = new Audio(); var seenInterrupt = localStorage.getItem('radio_int') || '';
+var toast = function(t){ var d = document.createElement('div'); d.className = 'toast'; d.textContent = t; document.body.appendChild(d); setTimeout(function(){ d.remove(); }, 2600); };
+
+async function load(){
+  var t0 = Date.now();
+  st = await Radio.api('state');
+  Radio.offset = st.serverNow - (t0 + Date.now()) / 2;
+  applyConfig(); buildPlan(); renderStatic();
+}
+function applyConfig(){
+  var c = st.config; Radio.cssVars(c);
+  document.title = c.name;
+  $('name').textContent = c.name; $('tagline').textContent = c.tagline || '';
+  $('logo').style.backgroundImage = c.logoFileId ? 'url(' + Radio.img(c.logoFileId, 400) + ')' : 'none';
+  if (!c.logoFileId) $('logo').textContent = '📻', $('logo').style.cssText += ';display:grid;place-items:center;font-size:48px';
+  $('bg').style.backgroundImage = c.coverFileId ? 'url(' + Radio.img(c.coverFileId, 900) + ')' : 'radial-gradient(circle at 30% 20%, var(--accent), #0b0d12 70%)';
+  $('bg').style.filter = 'blur(' + ({light:3, medium:8, strong:16}[c.blur] || 8) + 'px)';
+  var tg = c.toggles || {};
+  var church = c.radioType !== 'common';
+  $('shareBtn').classList.toggle('hidden', tg.share === false);
+  $('lcount').classList.toggle('hidden', tg.listeners === false);
+  $('muteBtn').classList.toggle('hidden', tg.volume === false); $('vol').classList.toggle('hidden', tg.volume === false);
+  $('soc').classList.toggle('hidden', tg.social === false);
+  $('verseCard').classList.toggle('hidden', !(church && tg.verse !== false));
+  $('nextWrap').classList.toggle('hidden', tg.next === false);
+  var canPix = tg.contribute !== false && c.pix && c.pix.key;
+  $('contribBtn').classList.toggle('hidden', !canPix); $('tabContrib').classList.toggle('hidden', !canPix);
+  $('tabMembro').classList.toggle('hidden', !church);
+  $('insName').textContent = c.name; $('insIcon').src = c.logoFileId ? Radio.img(c.logoFileId, 96) : 'icon-192.png';
+  $('lcount').textContent = ' · ' + (st.listeners || 0);
+  var v = Radio.verseOfDay(c); $('verseText').textContent = '"' + v.text + '"'; $('verseRef').textContent = v.ref;
+  // redes
+  var s = '', ct = c.contact || {};
+  if (ct.whatsapp) s += '<a target="_blank" rel="noopener" href="https://wa.me/55' + ct.whatsapp.replace(/\D/g,'').replace(/^55/,'') + '" title="WhatsApp">💬</a>';
+  if (ct.instagram) s += '<a target="_blank" rel="noopener" href="' + (ct.instagram.indexOf('http') === 0 ? ct.instagram : 'https://instagram.com/' + ct.instagram.replace('@','')) + '" title="Instagram">📷</a>';
+  if (ct.facebook) s += '<a target="_blank" rel="noopener" href="' + (ct.facebook.indexOf('http') === 0 ? ct.facebook : 'https://' + ct.facebook.replace(/^\/+/, '')) + '" title="Facebook">f</a>';
+  $('soc').innerHTML = s;
+  var manifestName = c.name;
+}
+function buildPlan(){
+  var s2 = st;
+  if (forcedChannel) s2 = Object.assign({}, st, {schedule: [], config: Object.assign({}, st.config, {defaultPlaylistId: forcedChannel.playlistId})});
+  plan = Radio.activePlan(s2, Radio.now());
+}
+function renderStatic(){
+  // canais
+  var ch = $('chips'); ch.innerHTML = '';
+  if ((st.channels || []).length){
+    var mk = function(label, on, fn){ var b = document.createElement('button'); b.className = 'chip' + (on ? ' on' : ''); b.textContent = label; b.onclick = fn; ch.appendChild(b); };
+    mk('📡 Programação', !forcedChannel, function(){ forcedChannel = null; buildPlan(); renderStatic(); sync(true); });
+    st.channels.forEach(function(c){ mk(c.name, forcedChannel && forcedChannel.id === c.id, function(){ forcedChannel = c; buildPlan(); renderStatic(); sync(true); }); });
+  }
+  // avisos
+  $('noticeCard').classList.toggle('hidden', !st.notices.length);
+  $('notices').innerHTML = st.notices.map(function(n){ return '<div class="notice"><b>' + Radio.esc(n.title) + '</b><div class="mut" style="color:#cfd6e4">' + Radio.esc(n.text) + '</div></div>'; }).join('');
+  // patrocinadores
+  $('sponsCard').classList.toggle('hidden', !st.sponsors.length);
+  $('spons').innerHTML = st.sponsors.map(function(s){ var img = '<img alt="' + Radio.esc(s.name) + '" src="' + Radio.img(s.imageFileId, 400) + '">'; return s.link ? '<a target="_blank" rel="noopener" href="' + Radio.esc(s.link) + '">' + img + '</a>' : '<a>' + img + '</a>'; }).join('');
+  // lives
+  var lv = st.config.live || {}; var lives = st.lives || [];
+  var url = lv.active && lv.url ? lv.url : (lives[0] && lives[0].url);
+  $('liveCard').classList.toggle('hidden', !url);
+  if (url) { var emb = ytEmbed(url); $('liveBody').innerHTML = (lv.title ? '<b>' + Radio.esc(lv.title) + '</b>' : '') + (emb ? '<iframe class="ytframe" allowfullscreen src="' + emb + '"></iframe>' : '<a class="btn" target="_blank" rel="noopener" href="' + Radio.esc(url) + '">Assistir</a>'); }
+  // aprovados
+  $('apprCard').classList.toggle('hidden', !(st.approved || []).length);
+  $('appr').innerHTML = (st.approved || []).map(function(r){ return '<div class="notice">' + Radio.esc(r.title) + (r.name ? ' <span class="mut">· ' + Radio.esc(r.name) + '</span>' : '') + '</div>'; }).join('');
+  // pix
+  var p = st.config.pix || {};
+  $('pixBody').innerHTML = p.key ? ((p.invite ? '<p>' + Radio.esc(p.invite) + '</p>' : '') + '<span class="lbl">Chave Pix' + (p.type ? ' (' + Radio.esc(p.type) + ')' : '') + '</span><div class="pix" id="pixKey">' + Radio.esc(p.key) + '</div>' + (p.name ? '<div class="mut">Quem recebe: <b>' + Radio.esc(p.name) + '</b></div>' : '') + '<button class="btn" style="width:100%;margin-top:12px" id="pixCopy">Copiar chave</button>' + (p.instructions ? '<p class="mut" style="margin-top:12px">' + Radio.esc(p.instructions) + '</p>' : '')) : '<p class="mut">Em breve.</p>';
+  var pc = $('pixCopy'); if (pc) pc.onclick = function(){ copy(p.key); toast('Chave Pix copiada'); };
+  tick();
+}
+function ytEmbed(u){
+  var m = u.match(/(?:youtu\.be\/|v=|\/live\/|\/embed\/)([\w-]{11})/); return m ? 'https://www.youtube.com/embed/' + m[1] : '';
+}
+function copy(t){ if (navigator.clipboard) navigator.clipboard.writeText(t).catch(function(){}); else { var x = document.createElement('textarea'); x.value = t; document.body.appendChild(x); x.select(); document.execCommand('copy'); x.remove(); } }
+
+function sync(force){
+  var now = Radio.now(); var pos = Radio.position(plan, now);
+  if (!pos) { $('title').textContent = 'Programação em preparação'; $('artist').textContent = 'Em breve a rádio entra no ar'; return; }
+  var changed = lastTrackId !== pos.track.id + ':' + pos.index || force;
+  $('title').textContent = pos.track.kind === 'jingle' ? 'Rádio ' + st.config.name : pos.track.title;
+  $('artist').textContent = pos.track.kind === 'jingle' ? '' : (pos.track.artist || '');
+  $('prog').style.width = Math.min(100, pos.offset / pos.track.duration * 100) + '%';
+  $('next').innerHTML = Radio.upcoming(plan, pos.index, 5).map(function(t){ return '<div>' + Radio.esc(t.kind === 'jingle' ? '♪ vinheta' : t.title) + '</div>'; }).join('');
+  if (!playing) return;
+  if (changed) {
+    lastTrackId = pos.track.id + ':' + pos.index;
+    au.src = Radio.audio(pos.track.fileId);
+    au.onloadedmetadata = function(){ try { au.currentTime = Math.min(pos.offset + 0.3, Math.max(0, au.duration - 0.5)); } catch(e){} au.play().catch(function(){}); };
+    au.load();
+    au.play().catch(function(){});
+  } else if (!au.paused && Math.abs(au.currentTime - pos.offset) > 4) {
+    try { au.currentTime = pos.offset; } catch(e){}
+  }
+}
+function tick(){
+  if (!plan) return;
+  var p = Radio.position(plan, Radio.now());
+  if (p) { $('prog').style.width = Math.min(100, p.offset / p.track.duration * 100) + '%'; }
+}
+au.addEventListener('ended', function(){ lastTrackId = null; sync(true); });
+au.addEventListener('error', function(){ if (playing) setTimeout(function(){ lastTrackId = null; }, 4000); });
+setInterval(function(){ if (!plan) return; var pos = Radio.position(plan, Radio.now()); if (pos && (lastTrackId !== pos.track.id + ':' + pos.index)) sync(false); else tick(); }, 1000);
+setInterval(function(){ if (plan && playing) sync(false); }, 5000);
+
+$('play').onclick = function(){
+  playing = !playing; $('play').textContent = playing ? '⏸' : '▶';
+  $('npLabel').textContent = playing ? 'Tocando agora' : 'Toque para ouvir';
+  if (playing) { buildPlan(); lastTrackId = null; sync(true); } else { au.pause(); }
+};
+$('vol').oninput = function(){ au.volume = this.value * duck; voice.volume = this.value; };
+$('muteBtn').onclick = function(){ au.muted = !au.muted; $('muteBtn').textContent = au.muted ? '🔇' : '🔊'; };
+
+// hora certa
+var lastHour = -1;
+function checkHour(){
+  var lp = Radio.localParts(Radio.now());
+  if (!playing || !st || !st.config.timeAnnounce || lp.m !== 0 || lp.s > 12 || lastHour === lp.h || !window.speechSynthesis) return;
+  lastHour = lp.h; duck = 0.2; au.volume = $('vol').value * duck;
+  var u = new SpeechSynthesisUtterance('Hora certa. São ' + lp.h + (lp.h === 1 ? ' hora.' : ' horas.')); u.lang = 'pt-BR';
+  u.onend = function(){ duck = 1; au.volume = $('vol').value; };
+  speechSynthesis.speak(u);
+}
+setInterval(checkHour, 2000);
+
+// recado de voz (interrupção)
+function checkInterrupt(){
+  var it = st.config.interrupt; if (!it || !it.id || it.id === seenInterrupt) return;
+  seenInterrupt = it.id; localStorage.setItem('radio_int', it.id);
+  if (!playing || (st.serverNow - it.at) > 120000) return;
+  duck = 0.15; au.volume = $('vol').value * duck; voice.src = Radio.audio(it.fileId); voice.volume = $('vol').value;
+  voice.onended = function(){ duck = 1; au.volume = $('vol').value; };
+  voice.play().catch(function(){ duck = 1; au.volume = $('vol').value; });
+}
+// atualização periódica
+setInterval(async function(){
+  try { var t0 = Date.now(); var n = await Radio.api('state'); Radio.offset = n.serverNow - (t0 + Date.now()) / 2; st = n; applyConfig(); var old = plan && plan.playlist && plan.playlist.id; buildPlan(); renderStatic(); checkInterrupt(); } catch(e){}
+}, 20000);
+setInterval(function(){ Radio.api('ping', {cid: Radio.cid}).then(function(r){ $('lcount').textContent = ' · ' + r.n; }).catch(function(){}); }, 30000);
+
+// abas
+function show(v){ ['ouvir','sugerir','contribuir','membro'].forEach(function(x){ $('v-' + x).classList.toggle('hidden', x !== v); });
+  document.querySelectorAll('.tabs button').forEach(function(b){ b.classList.toggle('on', b.dataset.v === v); }); if (v === 'membro') renderMember(); window.scrollTo(0, 0); }
+document.querySelectorAll('.tabs button').forEach(function(b){ b.onclick = function(){ show(b.dataset.v); }; });
+$('goPix').onclick = function(){ show('contribuir'); };
+$('shareBtn').onclick = function(){ var d = {title: st.config.name, text: 'Ouça a ' + st.config.name, url: location.href.split('#')[0]}; if (navigator.share) navigator.share(d).catch(function(){}); else { copy(d.url); toast('Link da rádio copiado'); } };
+
+// sugerir
+$('sgSend').onclick = async function(){
+  var t = $('sgTitle').value.trim(); if (!t) { $('sgMsg').textContent = 'Diga o nome da música.'; return; }
+  try { await Radio.api('suggest', {title: t, name: $('sgName').value.trim(), cid: Radio.cid}); $('sgMsg').innerHTML = '<span class="ok">Pedido enviado! Obrigado.</span>'; $('sgTitle').value = ''; }
+  catch(e){ $('sgMsg').innerHTML = '<span class="err">' + Radio.esc(e.message) + '</span>'; }
+};
+
+// carteirinha de membro
+function renderMember(){
+  var box = $('memberCard'); var saved = localStorage.getItem('radio_member');
+  if (saved) return showCard(saved);
+  box.innerHTML = '<h3>Carteirinha de membro</h3><span class="lbl">Nome completo</span><input id="mNome"><span class="lbl">WhatsApp</span><input id="mTel" inputmode="tel"><span class="lbl">Nascimento</span><input id="mNasc" type="date"><span class="lbl">Foto (3x4)</span><input id="mFoto" type="file" accept="image/*"><button class="btn" style="width:100%;margin-top:14px" id="mSend">Gerar minha carteirinha</button><div id="mMsg" class="mut" style="margin-top:8px"></div>';
+  $('mSend').onclick = async function(){
+    var nome = $('mNome').value.trim(); if (!nome) { $('mMsg').textContent = 'Informe o nome.'; return; }
+    $('mMsg').textContent = 'Enviando...';
+    try {
+      var b64 = ''; var f = $('mFoto').files[0]; if (f) b64 = await shrink(f);
+      var r = await Radio.api('register', {name: nome, phone: $('mTel').value, birth: $('mNasc').value, photoB64: b64});
+      localStorage.setItem('radio_member', r.id); showCard(r.id);
+    } catch(e){ $('mMsg').innerHTML = '<span class="err">' + Radio.esc(e.message) + '</span>'; }
+  };
+}
+function shrink(file){ return new Promise(function(res, rej){ var img = new Image(); img.onload = function(){ var w = 360, h = Math.round(img.height / img.width * 360); var c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h); res(c.toDataURL('image/jpeg', 0.8).split(',')[1]); }; img.onerror = rej; img.src = URL.createObjectURL(file); }); }
+async function showCard(id){
+  var box = $('memberCard'); box.innerHTML = '<div class="mut">Carregando...</div>';
+  try {
+    var m = await Radio.api('member', {id: id});
+    var url = location.href.split('#')[0].replace(/[^/]*$/, '') + 'index.html#/carteirinha/' + m.id;
+    var qr = qrcode(0, 'M'); qr.addData(url); qr.make();
+    box.innerHTML = '<h3>Carteirinha de membro</h3><div class="idcard"><div class="ph" style="background-image:url(' + Radio.img(m.photoFileId, 300) + ')"></div><div style="flex:1"><b style="font-size:18px">' + Radio.esc(m.name) + '</b><div class="mut" style="color:#e5e7eb">' + Radio.esc(m.role || 'Membro') + ' · ' + Radio.esc(st.config.churchName || st.config.name) + '</div></div><div class="qr">' + qr.createImgTag(3, 0) + '</div></div><p class="mut">Mostre este QR na recepção. Guarde esta página na tela inicial.</p><button class="chip" id="mOut">Não sou eu / sair</button>';
+    $('mOut').onclick = function(){ localStorage.removeItem('radio_member'); renderMember(); };
+  } catch(e){ localStorage.removeItem('radio_member'); box.innerHTML = '<div class="err">' + Radio.esc(e.message) + '</div>'; }
+}
+
+// instalar PWA
+var deferred = null;
+window.addEventListener('beforeinstallprompt', function(e){ e.preventDefault(); deferred = e; if (st && st.config.toggles.install !== false) $('installBar').classList.remove('hidden'); });
+$('insBtn').onclick = function(){ if (deferred) { deferred.prompt(); deferred = null; $('installBar').classList.add('hidden'); } else toast('No menu do navegador: Adicionar à tela inicial'); };
+$('insX').onclick = function(){ $('installBar').classList.add('hidden'); };
+var ios = /iphone|ipad/i.test(navigator.userAgent) && !window.navigator.standalone;
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function(){});
+
+load().then(function(){
+  if (ios && st.config.toggles.install !== false) { $('installBar').classList.remove('hidden'); $('insBtn').onclick = function(){ toast('Toque em Compartilhar e depois em Adicionar à Tela de Início'); }; }
+  var m = location.hash.match(/#\/carteirinha\/(\w+)/);
+  if (m) { show('membro'); showCard(m[1]); }
+  Radio.api('ping', {cid: Radio.cid}).catch(function(){});
+}).catch(function(e){ $('title').textContent = 'Não consegui carregar a rádio'; $('artist').textContent = e.message; });
+})();
+</script>
+</body></html>
