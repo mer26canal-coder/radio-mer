@@ -11,7 +11,7 @@ R.api = async function(action, params, token){
   return j.data;
 };
 R.img = function(id, w){ return id ? 'https://lh3.googleusercontent.com/d/' + id + (w ? '=w' + w : '') : ''; };
-R.audio = function(id){ return 'https://drive.google.com/uc?export=download&id=' + id; };
+R.audio = function(id){ if (/\.(mp3|m4a|ogg|wav|aac)$/i.test(id) || id.indexOf('/') >= 0) return /^https?:/.test(id) ? id : new URL(id, location.href.replace(/[^\/]*$/, '')).href; return 'https://drive.google.com/uc?export=download&id=' + id; };
 R.esc = function(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
 R.offset = 0; // servidor - cliente
 R.now = function(){ return Date.now() + R.offset; };
