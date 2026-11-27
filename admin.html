@@ -47,8 +47,9 @@ var pubUrl = location.href.replace(/admin\.html.*$/, '');
 var MENU = [['inicio','🏠 Início'],['h','SUA IGREJA'],['aparencia','🎨 Aparência'],['avisos','📣 Avisos'],['doacoes','💚 Doações Pix'],['carteirinhas','🪪 Carteirinhas'],['contato','📞 Contato e redes'],['h','CRESCIMENTO'],['patrocinadores','🤝 Patrocinadores'],['h','SUA RÁDIO'],['musicas','🎵 Músicas'],['playlists','📚 Playlists'],['horarios','⏰ Horários'],['autodj','🤖 AutoDJ'],['recado','🎙️ Recado de voz'],['canais','📡 Canais'],['pedidos','💡 Pedidos de música'],['lives','🔴 Lives da igreja'],['h','CONTA'],['conta','⚙️ Conta']];
 
 async function enter(code){
+  var eb = $('enter'); eb.disabled = true; eb.textContent = 'Entrando...'; $('lerr').textContent = '';
   try { await Radio.api('login', {}, code); TOKEN = code; sessionStorage.setItem('radio_tok', code); await reload(true); $('login').classList.add('hidden'); $('shell').classList.remove('hidden'); $('menubtn').classList.remove('hidden'); go('inicio'); }
-  catch(e){ $('lerr').textContent = e.message; sessionStorage.removeItem('radio_tok'); }
+  catch(e){ eb.disabled = false; eb.textContent = 'Entrar'; $('lerr').textContent = e.message; sessionStorage.removeItem('radio_tok'); }
 }
 $('enter').onclick = function(){ enter($('code').value); };
 $('code').onkeydown = function(e){ if (e.key === 'Enter') enter(this.value); };
